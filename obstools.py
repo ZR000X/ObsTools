@@ -4,9 +4,7 @@ import networkx as nx
 from copy import deepcopy
 import datetime
 
-## PERFORMER METHODS
-
-def journal_make_days(date0: datetime.date, date1: datetime.date):
+def journal_make_days(date0: datetime.date, date1: datetime.date) -> None:
     """
     From date0 to date1, will build each date's file with just the built text.
     """
@@ -25,10 +23,8 @@ def journal_make_days(date0: datetime.date, date1: datetime.date):
         # print file and next loop
         print(text,file=open(filename,'w'))
         date = date + day
-
-## GENERIC METHODS
  
-def get_all_paths(vault_dir):
+def get_all_paths(vault_dir) -> list:
     """
     Packages: pathlib
     
@@ -53,7 +49,7 @@ def get_all_paths(vault_dir):
                         o.append(Path(e))
     return o
 
-def get_names_to_paths(all_paths):
+def get_names_to_paths(all_paths) -> dict:
     """
     Packages: pathlib.Path
     
@@ -71,7 +67,7 @@ def get_names_to_paths(all_paths):
                 o[p.name] = set([p])
     return o
 
-def get_names_to_links(names_to_paths):
+def get_names_to_links(names_to_paths) -> list:
     """
     Returns a pair [o,e]
     o is a dict which maps each filename to its own dictionary d, and d maps the filenames of the links present within the file to their display texts. 
@@ -100,14 +96,14 @@ def get_names_to_links(names_to_paths):
             e[key] = err
     return [o,e]
 
-def get_all_notes(all_paths):
+def get_all_notes(all_paths) -> list:
     o = list()
     for p in all_paths:
         if str(p).count(".md") == 1 and p.suffix == ".md":
             o.append(p)
     return o
 
-def produce_json_of_vault(vault_dir, json_filename):    
+def produce_json_of_vault(vault_dir, json_filename) -> dict:    
     all_paths = get_all_paths(vault_dir)
     names_to_paths = get_names_to_paths(all_paths)
     names_to_links = get_names_to_links(names_to_paths)
@@ -195,4 +191,71 @@ def get_backlinks(dictionary):
                 o[values].add(key)
             except KeyError:
                 o[values] = {key}        
-    return o       
+    return o
+
+def is_self_mapping_dict(dictionary) -> bool:
+    """
+    Is the mathematical definition of a self mapping dictionary
+    """
+    for key, values in dictionary.items():
+        for i in values:
+            if not i in dictionary:
+                return False
+    return True
+
+def force_dict_to_be_self_mapping(dictionary, copy=True) -> dict:
+    """
+    Will reduce the dictionary minimally to ensure it is self-mapping
+    """
+    if copy:
+        o = dict()
+        for key, values in dictionary.items():
+            for value in values:
+                if value in dictionary:
+                    try:
+                        o[key].add(value)
+                    except KeyError:
+                        o[key] = {value}
+        return o
+    new_dict = deepcopy(dictionary) # makes a fresh, separate copy
+    for key, values in new_dict.items(): # iterate through the copy
+        for value in values:
+            if not value in new_dict:
+                dictionary.pop(key) # pop it from the original dictionary
+    return new_dict
+
+def walk_around(dictionary: dict):
+    """
+    Will produce a list of paths in the entire digraph-as-dict that either terminate as a cycle or
+    when a leaf (no links) is reached.
+    """
+    def update_walks(dictionary: dict, walks: list) -> list:
+        """
+        Given a mapping dict, will update all given walks to their next position,
+        as well as creating the new walks if a walk can go multiple ways
+        """
+        o = walks[:]
+        for walk in walks:
+            if len(dictionary[walk[-1]]) > 0:
+                for next_step in dictionary[walk[-1]]:
+                    o.append(walk[:]+[next_step])
+                o.remove(walk)
+        return o
+    initial_walks = list() # build initial walks [[1], [2], ...] 
+    for key in dictionary:
+        initial_walks.append([key])
+    busy_walking = update_walks(dictionary, initial_walks) # [[1,d1], [2,d2] ...]]
+    final_walks = list() # will store walks that have terminated
+    expected_length = 2 # after next update, will be 3
+    walks_to_end = list() # will store walks for 
+    while len(busy_walking) > 0:
+        for walk in busy_walking:
+            if len(walk) < expected_length or walk[-1] in walk[:-1]: # then it reached a leaf
+                walks_to_end.append(walk)
+        for walk in walks_to_end:
+            final_walks.append(walk)
+            busy_walking.remove(walk)
+        walks_to_end = list()
+        busy_walking = update_walks(dictionary, busy_walking)
+        expected_length += 1
+    return final_walks
