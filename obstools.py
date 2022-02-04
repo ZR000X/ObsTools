@@ -131,47 +131,6 @@ def get_names_to_valid_links_from_file(json_filename):
         o[name] = valid_link_names
     return o
 
-def get_mapping_from_json(job):
-    o = dict()
-    for name, links in job.items():
-        valid_link_names = set()
-        for link in links:
-            if link in job:
-                valid_link_names.add(link)
-        o[name] = valid_link_names
-    return o
-
-def reduce_to_cycles(dictionary, cont=True):
-    """
-    Reduces the dictionary object to be only those items that are involved in cycles
-    
-    cont: remove self-referencing
-    """
-    def helper(d):
-        if type(d) is dict:
-            d1 = deepcopy(d)
-            o = False
-            for key, values in d.items():
-                if len(values) == 0:
-                    for key0, values0 in d1.items():
-                        if key in values0:
-                            values0.remove(key)
-                    d1.pop(key)
-                    o = True
-            return [d1,o]
-        elif type(d) is list:
-            return helper(d[0])
-    dictionary = helper(dictionary)
-    while dictionary[1]:
-        dictionary = helper(dictionary)
-    dictionary = dictionary[0]
-    if not cont:
-        return dictionary
-    for key, values in dictionary.items():
-        if key in values:
-            values.remove(key)
-    return reduce_to_cycles(dictionary, False)
-
 def get_backlinks(dictionary):
     """
     Returns a reversed self-mapped dictionary
@@ -224,7 +183,7 @@ def force_dict_to_be_self_mapping(dictionary, copy=True) -> dict:
                 dictionary.pop(key) # pop it from the original dictionary
     return new_dict
 
-def walk_around(dictionary: dict):
+def walk_around(dictionary: dict) -> list:
     """
     Will produce a list of paths in the entire digraph-as-dict that either terminate as a cycle or
     when a leaf (no links) is reached.
