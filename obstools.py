@@ -2,9 +2,32 @@ import json, os, sys
 from pathlib import Path
 import networkx as nx
 from copy import deepcopy
+import datetime
+
+## PERFORMER METHODS
+
+def journal_make_days(date0: datetime.date, date1: datetime.date):
+    """
+    From date0 to date1, will build each date's file with just the built text.
+    """
+    day = datetime.timedelta(days=1)
+    date = date0
+    
+    # make every day's file
+    while date <= date1:
+        # validate file name
+        filename = str(date)[:4]+"/"+str(date)[:-3]+"/"+str(date)+".md"
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        # build file's initial text
+        text = "# "+str(date)+"\n"
+        text += "[["+str(date-day)+"|Yesterday]] and [["+str(date+day)+"|Tomorrow]]"+"\n"
+        # text += "\n"+"[[120 Avenues of Support|SUPPORT THE SITE <3]]" 
+        # print file and next loop
+        print(text,file=open(filename,'w'))
+        date = date + day
 
 ## GENERIC METHODS
-        
+ 
 def get_all_paths(vault_dir):
     """
     Packages: pathlib
@@ -161,9 +184,15 @@ def get_backlinks(dictionary):
     """
     o = dict()
     for key, values in dictionary.items():
-        for v in values:
+        try:
+            for v in values:
+                try:
+                    o[v].add(key)
+                except KeyError:
+                    o[v] = {key}
+        except TypeError as te:
             try:
-                o[v].add(key)
+                o[values].add(key)
             except KeyError:
-                o[v] = {key}
+                o[values] = {key}        
     return o       
