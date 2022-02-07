@@ -1,8 +1,12 @@
 import json, os, sys
 from pathlib import Path
-import networkx as nx
+# import networkx as nx
 from copy import deepcopy
 import datetime
+
+def printd(dictionary: dict) -> None:
+    for key, value in dictionary.items():
+        print(str(key)+":",value)
 
 def journal_make_days(date0: datetime.date, date1: datetime.date) -> None:
     """
@@ -23,8 +27,8 @@ def journal_make_days(date0: datetime.date, date1: datetime.date) -> None:
         # print file and next loop
         print(text,file=open(filename,'w'))
         date = date + day
- 
-def get_all_paths(vault_dir) -> list:
+
+def get_all_paths(vault_dir) -> list:    
     """
     Packages: pathlib
     
@@ -49,75 +53,156 @@ def get_all_paths(vault_dir) -> list:
                         o.append(Path(e))
     return o
 
-def get_names_to_paths(all_paths) -> dict:
-    """
-    Packages: pathlib.Path
+def get_names_to_paths(inp) -> dict:
+    """    
+    Returns a dictionary that maps each .md filename to its paths,
+    since there exists the possibility of collisions within the vault,
+    i.e. different paths with the same .md filename.
     
-    Returns a dictionary that maps each .md filename to its paths.
+    Note: filenames contain their suffixes.
     
-    all_paths: list of Path's
+    @param inp: either string vault directory or all_paths dictionary
+    if string, then get_all_paths method will be used.
     """
-    o = dict()
-    for p in all_paths:
-        p = Path(p)
+    if type(inp) is str:
+        inp = get_all_paths(inp)
+    # now inp must be all_paths dictionary
+    out = dict()
+    for p in inp:
         if p.suffix == ".md":
             try: 
-                o[p.name].add(p)
+                out[p.name].add(p)
             except KeyError:
-                o[p.name] = set([p])
-    return o
+                out[p.name] = set([p])
+    return out
 
-def get_names_to_links(names_to_paths) -> list:
+def get_note_content(note_path):
+    pass
+
+def get_names_to_links(inp, errors = "replace", non_md_filetypes={".jpg", ".png", ".css"}) -> list:
     """
-    Returns a pair [o,e]
-    o is a dict which maps each filename to its own dictionary d, and d maps the filenames of the links present within the file to their display texts. 
-    e is a list of filenames where errors occurred when trying to call file.read()
+    Returns a pair
+    - out[0] is a dict which maps each filename to its own dictionary d, 
+    and d maps the filenames of the links present within the file to their display texts. 
+    - out[1] is a list of filenames where errors occurred when trying to call file.read()
+    
+    Note: links 
+    
+    @param inp: either a string vault directory or a names_to_paths dictionary
+    if a string, get_names_to_paths method will be used.
+    
+    @param errors: option to pass to open(., errors = ...) to handle errors when reading
     """
-    o = dict()
-    e = dict()
-    for key, values in names_to_paths.items():
+    if type(inp) is str:
+        inp = get_names_to_paths(inp) 
+    # now inp must be names_to_paths dictionary
+    out = dict()
+    err = dict()
+    for key, values in inp.items():
         path = Path(list(values)[0])
         read_path = False
         try:
-            with open(path, 'r', errors='replace') as ofile:
+            with open(path, 'r', errors=errors) as ofile:
                 text = ofile.read()
             d = dict()
             for i in text.split("[["):
                 if "]]" in i:
                     i = i[:i.find("]]")]
-                    if "|" in i:
-                        k = i.split("|")
-                        try: d[k[0]+".md"].add(k[1])
-                        except KeyError: d[k[0]+".md"] = set([k[1]])
-                    elif not i in d:
-                        d[i+".md"] = set()
-            o[key] = d
-        except Exception as err:
-            e[key] = err
-    return [o,e]
+                    if "|" in i: # then we used display text
+                        k = i.split("|") # now k is a list of link args, the first should
+                        # be the filename, the second the display text, the third etc.? nevermind them
+                        suffix = k[0][::-1][:k[0][::-1].find(".")+1][::-1]
+                        try:
+                            if suffix == "":
+                                d[k[0] + ".md" if not suffix in non_md_filetypes else ""].add(k[1])
+                        except KeyError: 
+                            d[k[0] + ".md" if not suffix in non_md_filetypes else ""] = set([k[1]])
+                    elif not i in d: # then we didn't use display text, and the filename isn't in our
+                        # dictionary yet, so we can put it in (if it was in, we do nothing)
+                        suffix = i[::-1][:i[::-1].find(".")+1][::-1]
+                        d[i + ".md" if not suffix in non_md_filetypes else ""] = set()
+            out[key] = d
+        except Exception as e:
+            err[key] = e
+    return [out,err]
 
-def get_all_notes(all_paths) -> list:
-    o = list()
-    for p in all_paths:
+def get_all_md_filenames(inp) -> list:
+    """
+    Returns a list of all filenames that end in .md
+    
+    @param inp: either a string vault directory or a all_paths dictionary
+    if a string, get_all_paths method will be used.
+    """
+    if type(inp) is str:
+        inp = get_all_paths(inp)
+    out = list()
+    for p in inp:
         if str(p).count(".md") == 1 and p.suffix == ".md":
-            o.append(p)
-    return o
+            out.append(p)
+    return out
 
-def produce_json_of_vault(vault_dir, json_filename) -> dict:    
-    all_paths = get_all_paths(vault_dir)
-    names_to_paths = get_names_to_paths(all_paths)
-    names_to_links = get_names_to_links(names_to_paths)
-    errors = names_to_links[1]
-    diction = names_to_links[0]
-    o = dict()
-    for i, d in diction.items():
-        p = dict()
-        for j, s in d.items():
-            p[j] = list(s)
-        o[i] = p
-    with open(json_filename, 'w') as ofile:
-        json.dump(o, ofile)
-    return errors
+def convert_dict_of_sets_to_dict_of_lists(dictionary):
+    """
+    Returns the same dictionary, but the values being sets are now lists
+    
+    @param dictionary: {key: set(), ...}
+    """
+    out = dict()
+    for key, setvalue in dictionary:
+        out[key] = list(setvalue)
+    return out
+
+def produce_json_of_vault(vault_dir, json_filename="", do_dump = False) -> dict:
+    """
+    Returns a triple
+    - out[0] is the json-valid dictionary for us
+    - out[1] is any errors during the get_names_to_links method, i.e., when file-reading
+    - out[2] is any error while dumping, is None if no error or no dumping
+    
+    @param vault_dir: string vault dictionary
+    @param json_filename (optional): string filename to do the dumping in
+    @param do_dump (optional): bool option to do json.dump
+    
+    Note: if json_filename is not given, then do_dump is forcefully set to False
+    """
+    names_to_links_pair = get_names_to_links(vault_dir)
+    errors = names_to_links_pair[1]
+    names_to_links = names_to_links_pair[0] # names_to_links dictionary
+    out = dict()
+    error_when_dumping = None
+    # convert all sets to lists for json compatibility
+    for filename, dict_of_links_to_aliases in names_to_links.items():
+        out[filename] = convert_dict_of_sets_to_dict_of_lists(dict_of_links_to_aliases)
+    if json_filename == "":
+        do_dump = False
+    if do_dump:
+        try:
+            with open(json_filename, 'w') as ofile:
+                json.dump(out, ofile)
+        except Exception as e:
+            error_when_dumping = e
+    return [out,errors,error_when_dumping]
+
+def get_names_to_aliases(inp) -> dict:
+    """
+    Returns pair,
+    - out[0] = dictionary of names to sets of aliases
+    - out[1] = erros when calling names_to_links, i.e., when file-reading
+    
+    @param inp: string vault directory or names_to_links dictionary
+    if string then get_names_to_links method is used
+    """
+    if type(inp) is str:
+        inp = get_names_to_links(inp)
+    # now inp must be names_to_links_pair
+    out = dict()
+    for filename, dict_links_to_aliases in inp[0].items():
+        for link_filename, set_of_aliases in dict_links_to_aliases.items():
+            try:
+                out[link_filename].update(set_of_aliases)
+            except KeyError:
+                out[link_filename] = set(set_of_aliases)
+    return [out,inp[1]]    
 
 def get_names_to_valid_links_from_file(json_filename):
     with open(json_filename, 'r') as ofile:
@@ -130,47 +215,6 @@ def get_names_to_valid_links_from_file(json_filename):
                 valid_link_names.add(link)
         o[name] = valid_link_names
     return o
-
-def get_mapping_from_json(job):
-    o = dict()
-    for name, links in job.items():
-        valid_link_names = set()
-        for link in links:
-            if link in job:
-                valid_link_names.add(link)
-        o[name] = valid_link_names
-    return o
-
-def reduce_to_cycles(dictionary, cont=True):
-    """
-    Reduces the dictionary object to be only those items that are involved in cycles
-    
-    cont: remove self-referencing
-    """
-    def helper(d):
-        if type(d) is dict:
-            d1 = deepcopy(d)
-            o = False
-            for key, values in d.items():
-                if len(values) == 0:
-                    for key0, values0 in d1.items():
-                        if key in values0:
-                            values0.remove(key)
-                    d1.pop(key)
-                    o = True
-            return [d1,o]
-        elif type(d) is list:
-            return helper(d[0])
-    dictionary = helper(dictionary)
-    while dictionary[1]:
-        dictionary = helper(dictionary)
-    dictionary = dictionary[0]
-    if not cont:
-        return dictionary
-    for key, values in dictionary.items():
-        if key in values:
-            values.remove(key)
-    return reduce_to_cycles(dictionary, False)
 
 def get_backlinks(dictionary):
     """
@@ -224,7 +268,7 @@ def force_dict_to_be_self_mapping(dictionary, copy=True) -> dict:
                 dictionary.pop(key) # pop it from the original dictionary
     return new_dict
 
-def walk_around(dictionary: dict):
+def walk_around(dictionary: dict) -> list:
     """
     Will produce a list of paths in the entire digraph-as-dict that either terminate as a cycle or
     when a leaf (no links) is reached.
