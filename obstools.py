@@ -76,8 +76,20 @@ def get_names_to_paths(inp) -> dict:
                 out[p.name] = set([p])
     return out
 
-def get_note_content(note_path):
-    pass
+def get_file_content(filepath, errors="replace"):
+    """
+    Returns a pair
+    - out[0] is the file content, is None if there was an error when reading
+    - out[1] is any errors that occur, is None if there were no errors
+    
+    @param filepath: the path of the note's file
+    @param errors: to path to open(., errors=...) to handle errors
+    """    
+    try:
+        with open(filepath, 'r', errors=errors) as ofile:
+            return [ofile.read(),None]
+    except Exception as err:
+        return [None,err]    
 
 def get_names_to_links(inp, errors = "replace", non_md_filetypes={".jpg", ".png", ".css"}) -> list:
     """
@@ -101,29 +113,28 @@ def get_names_to_links(inp, errors = "replace", non_md_filetypes={".jpg", ".png"
     for key, values in inp.items():
         path = Path(list(values)[0])
         read_path = False
-        try:
-            with open(path, 'r', errors=errors) as ofile:
-                text = ofile.read()
+        file_content = get_file_content(path,errors)
+        content = file_content[0]
+        error = file_content[1]
+        if error is None:
             d = dict()
-            for i in text.split("[["):
+            for i in content.split("[["):
                 if "]]" in i:
                     i = i[:i.find("]]")]
-                    if "|" in i: # then we used display text
-                        k = i.split("|") # now k is a list of link args, the first should
-                        # be the filename, the second the display text, the third etc.? nevermind them
+                    if "|" in i:
+                        k = i.split("|")
                         suffix = k[0][::-1][:k[0][::-1].find(".")+1][::-1]
                         try:
                             if suffix == "":
                                 d[k[0] + ".md" if not suffix in non_md_filetypes else ""].add(k[1])
                         except KeyError: 
                             d[k[0] + ".md" if not suffix in non_md_filetypes else ""] = set([k[1]])
-                    elif not i in d: # then we didn't use display text, and the filename isn't in our
-                        # dictionary yet, so we can put it in (if it was in, we do nothing)
+                    elif not i in d:
                         suffix = i[::-1][:i[::-1].find(".")+1][::-1]
                         d[i + ".md" if not suffix in non_md_filetypes else ""] = set()
             out[key] = d
-        except Exception as e:
-            err[key] = e
+        else:
+            err[key] = error
     return [out,err]
 
 def get_all_md_filenames(inp) -> list:
